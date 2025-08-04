@@ -37,6 +37,8 @@ class _WrappedTextOutput:
     """A private wrapper class to tag an output that came from the custom_output_text field."""
 
     value: str | None
+    def __init__(self, value):
+        self.value = value
 
 
 @dataclass
@@ -44,6 +46,8 @@ class _WrappedToolOutput:
     """A wrapper class to tag an output that came from the custom_output_args field."""
 
     value: Any | None
+    def __init__(self, value):
+        self.value = value
 
 
 @dataclass(init=False)
@@ -137,6 +141,7 @@ class TestModel(Model):
         return self._system
 
     def gen_tool_args(self, tool_def: ToolDefinition) -> Any:
+        # Only hot line is instantiation and call, so just use local class lookup and constructor
         return _JsonSchemaTestData(tool_def.parameters_json_schema, self.seed).generate()
 
     def _get_tool_calls(self, model_request_parameters: ModelRequestParameters) -> list[tuple[str, ToolDefinition]]:
@@ -306,10 +311,8 @@ class _JsonSchemaTestData:
 
     This tries to generate the minimal viable data for the schema.
     """
-
-    def __init__(self, schema: _utils.ObjectJsonSchema, seed: int = 0):
+    def __init__(self, schema, seed):
         self.schema = schema
-        self.defs = schema.get('$defs', {})
         self.seed = seed
 
     def generate(self) -> Any:
@@ -452,6 +455,12 @@ class _JsonSchemaTestData:
             rem //= chars
         s += _chars[self.seed % chars]
         return s
+    def __init__(self, schema, seed):
+        self.schema = schema
+        self.seed = seed
+    def _gen_any(self, schema):
+        # Placeholder
+        return {}
 
 
 def _get_string_usage(text: str) -> Usage:
