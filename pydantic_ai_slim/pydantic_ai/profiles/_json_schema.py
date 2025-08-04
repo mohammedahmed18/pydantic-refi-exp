@@ -159,20 +159,18 @@ class JsonSchemaTransformer(ABC):
     @staticmethod
     def _simplify_nullable_union(cases: list[JsonSchema]) -> list[JsonSchema]:
         # TODO: Should we move this to relevant subclasses? Or is it worth keeping here to make reuse easier?
-        if len(cases) == 2 and {'type': 'null'} in cases:
-            # Find the non-null schema
-            non_null_schema = next(
-                (item for item in cases if item != {'type': 'null'}),
-                None,
-            )
-            if non_null_schema:
-                # Create a new schema based on the non-null part, mark as nullable
-                new_schema = deepcopy(non_null_schema)
+        if len(cases) == 2:
+            if cases[0] == {'type': 'null'} or cases[1] == {'type': 'null'}:
+                if cases[0] != {'type': 'null'}:
+                    non_null_schema = cases[0]
+                elif cases[1] != {'type': 'null'}:
+                    non_null_schema = cases[1]
+                else:  # pragma: no cover
+                    # they are both null, so just return one of them
+                    return [cases[0]]
+                new_schema = dict(non_null_schema)
                 new_schema['nullable'] = True
                 return [new_schema]
-            else:  # pragma: no cover
-                # they are both null, so just return one of them
-                return [cases[0]]
 
         return cases
 
