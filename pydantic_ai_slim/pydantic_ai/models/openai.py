@@ -48,6 +48,8 @@ from . import (
     download_item,
     get_user_agent,
 )
+from openai import AsyncOpenAI
+from openai.types import chat
 
 try:
     from openai import NOT_GIVEN, APIStatusError, AsyncOpenAI, AsyncStream, NotGiven
@@ -188,7 +190,7 @@ class OpenAIModel(Model):
 
     def __init__(
         self,
-        model_name: OpenAIModelName,
+        model_name: 'OpenAIModelName',
         *,
         provider: Literal[
             'openai',
@@ -205,7 +207,7 @@ class OpenAIModel(Model):
         ]
         | Provider[AsyncOpenAI] = 'openai',
         profile: ModelProfileSpec | None = None,
-        system_prompt_role: OpenAISystemPromptRole | None = None,
+        system_prompt_role: 'OpenAISystemPromptRole' | None = None,
         settings: ModelSettings | None = None,
     ):
         """Initialize an OpenAI model.
@@ -224,11 +226,31 @@ class OpenAIModel(Model):
 
         if isinstance(provider, str):
             provider = infer_provider(provider)
-        self.client = provider.client
+            client = provider.client
+            profile_func = getattr(provider, 'model_profile', None)
+        else:
+            client = provider.client
+            profile_func = getattr(provider, 'model_profile', None)
+
+        self.client = client
 
         self.system_prompt_role = system_prompt_role
 
-        super().__init__(settings=settings, profile=profile or provider.model_profile)
+        # Minor: Avoid extra attribute access and function calls.
+        # Use profile if specified, else provider.model_profile(model_name) if it exists, else fallback to provider.model_profile attribute.
+        if profile is not None:
+            resolved_profile = profile
+        elif profile_func is not None:
+            # Use model_profile if it exists and is callable
+            try:
+                resolved_profile = profile_func(model_name)
+            except TypeError:
+                # fallback if model_profile is not properly implemented
+                resolved_profile = getattr(provider, 'model_profile', None)
+        else:
+            resolved_profile = getattr(provider, 'model_profile', None)
+
+        super().__init__(settings=settings, profile=resolved_profile)
 
     @property
     def base_url(self) -> str:
