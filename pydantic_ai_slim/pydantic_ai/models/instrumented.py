@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
-from urllib.parse import urlparse
+from urllib.parse import urlsplit, urlparse
 
 from opentelemetry._events import (
     Event,  # pyright: ignore[reportPrivateImportUsage]
@@ -361,7 +361,7 @@ class InstrumentedModel(WrapperModel):
         }
         if base_url := model.base_url:
             try:
-                parsed = urlparse(base_url)
+                parsed = urlsplit(base_url)
             except Exception:  # pragma: no cover
                 pass
             else:
