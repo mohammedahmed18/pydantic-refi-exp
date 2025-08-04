@@ -37,6 +37,8 @@ class _WrappedTextOutput:
     """A private wrapper class to tag an output that came from the custom_output_text field."""
 
     value: str | None
+    def __init__(self, value: str | None) -> None:
+        self.value = value
 
 
 @dataclass
@@ -44,6 +46,8 @@ class _WrappedToolOutput:
     """A wrapper class to tag an output that came from the custom_output_args field."""
 
     value: Any | None
+    def __init__(self, value: Any) -> None:
+        self.value = value
 
 
 @dataclass(init=False)
@@ -306,10 +310,8 @@ class _JsonSchemaTestData:
 
     This tries to generate the minimal viable data for the schema.
     """
-
-    def __init__(self, schema: _utils.ObjectJsonSchema, seed: int = 0):
+    def __init__(self, schema: Any, seed: int) -> None:
         self.schema = schema
-        self.defs = schema.get('$defs', {})
         self.seed = seed
 
     def generate(self) -> Any:
@@ -452,6 +454,15 @@ class _JsonSchemaTestData:
             rem //= chars
         s += _chars[self.seed % chars]
         return s
+    def __init__(self, schema: Any, seed: int) -> None:
+        self.schema = schema
+        self.seed = seed
+
+    def _gen_any(self, schema: Any) -> Any:
+        # Dummy test implementation
+        # The actual implementation would depend on schema shape
+        # For the purposes of this class stub, just return None
+        return None
 
 
 def _get_string_usage(text: str) -> Usage:
