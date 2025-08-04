@@ -78,7 +78,6 @@ class OpenAIJsonSchemaTransformer(JsonSchemaTransformer):
     * `additionalProperties` must be set to false for each object in the parameters
     * all fields in properties must be marked as required
     """
-
     def __init__(self, schema: JsonSchema, *, strict: bool | None = None):
         super().__init__(schema, strict=strict)
         self.root_ref = schema.get('$ref')
@@ -122,11 +121,7 @@ class OpenAIJsonSchemaTransformer(JsonSchemaTransformer):
                 schema['anyOf'] = [{'$ref': schema.pop('$ref')}]
 
         # Track strict-incompatible keys
-        incompatible_values: dict[str, Any] = {}
-        for key in _STRICT_INCOMPATIBLE_KEYS:
-            value = schema.get(key, _sentinel)
-            if value is not _sentinel:
-                incompatible_values[key] = value
+        incompatible_values = {k: schema[k] for k in _STRICT_INCOMPATIBLE_KEYS if k in schema}
         description = schema.get('description')
         if incompatible_values:
             if self.strict is True:
