@@ -167,7 +167,7 @@ class JsonSchemaTransformer(ABC):
             )
             if non_null_schema:
                 # Create a new schema based on the non-null part, mark as nullable
-                new_schema = deepcopy(non_null_schema)
+                new_schema = non_null_schema.copy()
                 new_schema['nullable'] = True
                 return [new_schema]
             else:  # pragma: no cover
