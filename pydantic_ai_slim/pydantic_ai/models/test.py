@@ -384,7 +384,7 @@ class _JsonSchemaTestData:
 
         if fmt := schema.get('format'):
             if fmt == 'date':
-                return (date(2024, 1, 1) + timedelta(days=self.seed)).isoformat()
+                return _SEED_DATE_STRS[self.seed]
 
         return self._char()
 
@@ -445,15 +445,22 @@ class _JsonSchemaTestData:
     def _char(self) -> str:
         """Generate a character on the same principle as Excel columns, e.g. a-z, aa-az..."""
         chars = len(_chars)
-        s = ''
+        parts = []
         rem = self.seed // chars
         while rem > 0:
-            s += _chars[(rem - 1) % chars]
+            parts.append(_chars[(rem - 1) % chars])
             rem //= chars
-        s += _chars[self.seed % chars]
-        return s
+        parts.append(_chars[self.seed % chars])
+        return ''.join(parts)
 
 
 def _get_string_usage(text: str) -> Usage:
     response_tokens = _estimate_string_tokens(text)
     return Usage(response_tokens=response_tokens, total_tokens=response_tokens)
+
+_MAX_SEED = 1000
+
+_SEED_DATE_STRS = [
+    (date(2024, 1, 1) + timedelta(days=s)).isoformat()
+    for s in range(_MAX_SEED)
+]
