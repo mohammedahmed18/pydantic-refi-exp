@@ -34,6 +34,7 @@ from ..providers import Provider, infer_provider
 from ..settings import ModelSettings
 from ..tools import ToolDefinition
 from . import Model, ModelRequestParameters, StreamedResponse, check_allow_model_requests, download_item, get_user_agent
+from anthropic.types.beta import BetaMessage, BetaRawMessageDeltaEvent, BetaRawMessageStartEvent, BetaRawMessageStreamEvent
 
 try:
     from anthropic import NOT_GIVEN, APIStatusError, AsyncAnthropic, AsyncStream
@@ -425,19 +426,16 @@ class AnthropicModel(Model):
 
 
 def _map_usage(message: BetaMessage | BetaRawMessageStreamEvent) -> usage.Usage:
-    if isinstance(message, BetaMessage):
-        response_usage = message.usage
-    elif isinstance(message, BetaRawMessageStartEvent):
-        response_usage = message.message.usage
-    elif isinstance(message, BetaRawMessageDeltaEvent):
-        response_usage = message.usage
-    else:
+    usage_getter = _MAP_USAGE_DISPATCH.get(type(message))
+    if usage_getter is None:
         # No usage information provided in:
         # - RawMessageStopEvent
         # - RawContentBlockStartEvent
         # - RawContentBlockDeltaEvent
         # - RawContentBlockStopEvent
         return usage.Usage()
+
+    response_usage = usage_getter(message)
 
     # Store all integer-typed usage values in the details, except 'output_tokens' which is represented exactly by
     # `response_tokens`
@@ -541,3 +539,9 @@ class AnthropicStreamedResponse(StreamedResponse):
     def timestamp(self) -> datetime:
         """Get the timestamp of the response."""
         return self._timestamp
+
+_MAP_USAGE_DISPATCH = {
+    BetaMessage: lambda m: m.usage,
+    BetaRawMessageStartEvent: lambda m: m.message.usage,
+    BetaRawMessageDeltaEvent: lambda m: m.usage,
+}
