@@ -59,7 +59,9 @@ def instrument_model(model: Model, instrument: InstrumentationSettings | bool) -
     """Instrument a model with OpenTelemetry/logfire."""
     if instrument and not isinstance(model, InstrumentedModel):
         if instrument is True:
-            instrument = InstrumentationSettings()
+            if not hasattr(instrument_model, "_default_settings"):
+                instrument_model._default_settings = InstrumentationSettings()
+            instrument = instrument_model._default_settings
 
         model = InstrumentedModel(model, instrument)
 
