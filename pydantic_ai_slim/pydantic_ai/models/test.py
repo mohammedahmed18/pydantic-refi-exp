@@ -311,6 +311,8 @@ class _JsonSchemaTestData:
         self.schema = schema
         self.defs = schema.get('$defs', {})
         self.seed = seed
+        # Cache ref-regex and compiled key extraction for better performance.
+        self._ref_regex = re.compile(r'^#/\$defs/')
 
     def generate(self) -> Any:
         """Generate data for the JSON schema."""
@@ -318,39 +320,51 @@ class _JsonSchemaTestData:
 
     def _gen_any(self, schema: dict[str, Any]) -> Any:
         """Generate data for any JSON Schema."""
-        if const := schema.get('const'):
-            return const
-        elif enum := schema.get('enum'):
-            return enum[self.seed % len(enum)]
-        elif examples := schema.get('examples'):
-            return examples[self.seed % len(examples)]
-        elif ref := schema.get('$ref'):
-            key = re.sub(r'^#/\$defs/', '', ref)
-            js_def = self.defs[key]
-            return self._gen_any(js_def)
-        elif any_of := schema.get('anyOf'):
-            return self._gen_any(any_of[self.seed % len(any_of)])
+        # Check by direct key lookup for the fast path.
+        if 'const' in schema:
+            const = schema['const']
+            if const:
+                return const
+        if 'enum' in schema:
+            enum = schema['enum']
+            if enum:
+                return enum[self.seed % len(enum)]
+        if 'examples' in schema:
+            examples = schema['examples']
+            if examples:
+                return examples[self.seed % len(examples)]
+        if '$ref' in schema:
+            ref = schema['$ref']
+            if ref:
+                # Use precompiled regex
+                key = self._ref_regex.sub('', ref)
+                js_def = self.defs[key]
+                return self._gen_any(js_def)
+        if 'anyOf' in schema:
+            any_of = schema['anyOf']
+            if any_of:
+                return self._gen_any(any_of[self.seed % len(any_of)])
 
+        # type-check: only check dict key once
         type_ = schema.get('type')
         if type_ is None:
             # if there's no type or ref, we can't generate anything
             return self._char()
-        elif type_ == 'object':
+        if type_ == 'object':
             return self._object_gen(schema)
-        elif type_ == 'string':
+        if type_ == 'string':
             return self._str_gen(schema)
-        elif type_ == 'integer':
+        if type_ == 'integer':
             return self._int_gen(schema)
-        elif type_ == 'number':
+        if type_ == 'number':
             return float(self._int_gen(schema))
-        elif type_ == 'boolean':
+        if type_ == 'boolean':
             return self._bool_gen()
-        elif type_ == 'array':
+        if type_ == 'array':
             return self._array_gen(schema)
-        elif type_ == 'null':
+        if type_ == 'null':
             return None
-        else:
-            raise NotImplementedError(f'Unknown type: {type_}, please submit a PR to extend JsonSchemaTestData!')
+        raise NotImplementedError(f'Unknown type: {type_}, please submit a PR to extend JsonSchemaTestData!')
 
     def _object_gen(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Generate data for a JSON Schema object."""
@@ -419,7 +433,8 @@ class _JsonSchemaTestData:
         """Generate an array from a JSON Schema array."""
         data: list[Any] = []
         unique_items = schema.get('uniqueItems')
-        if prefix_items := schema.get('prefixItems'):
+        prefix_items = schema.get('prefixItems')
+        if prefix_items:
             for item in prefix_items:
                 data.append(self._gen_any(item))
                 if unique_items:
@@ -427,16 +442,23 @@ class _JsonSchemaTestData:
 
         items_schema = schema.get('items', {})
         min_items = schema.get('minItems', 0)
-        if min_items > len(data):
-            for _ in range(min_items - len(data)):
-                data.append(self._gen_any(items_schema))
-                if unique_items:
+        need_items = min_items - len(data)
+        if need_items > 0:
+            gen_any = self._gen_any  # Faster local lookup
+            append = data.append
+            # To avoid repeated attribute lookups, hoist conditionals
+            if unique_items:
+                for _ in range(need_items):
+                    append(gen_any(items_schema))
                     self.seed += 1
+            else:
+                for _ in range(need_items):
+                    append(gen_any(items_schema))
         elif items_schema:
-            # if there is an `items` schema, add an item unless it would break `maxItems` rule
             max_items = schema.get('maxItems')
             if max_items is None or max_items > len(data):
-                data.append(self._gen_any(items_schema))
+                val = self._gen_any(items_schema)
+                data.append(val)
                 if unique_items:
                     self.seed += 1
 
