@@ -42,6 +42,7 @@ from . import (
     download_item,
     get_user_agent,
 )
+from google.genai.types import Part
 
 try:
     from google import genai
@@ -518,9 +519,11 @@ def _process_response_from_parts(
                 items.append(TextPart(content=part.text))
         elif part.function_call:
             assert part.function_call.name is not None
-            tool_call_part = ToolCallPart(tool_name=part.function_call.name, args=part.function_call.args)
+            # Create ToolCallPart with all fields at construction to avoid later attribute assignment
             if part.function_call.id is not None:
-                tool_call_part.tool_call_id = part.function_call.id  # pragma: no cover
+                tool_call_part = ToolCallPart(tool_name=part.function_call.name, args=part.function_call.args, tool_call_id=part.function_call.id)
+            else:
+                tool_call_part = ToolCallPart(tool_name=part.function_call.name, args=part.function_call.args)
             items.append(tool_call_part)
         elif part.function_response:  # pragma: no cover
             raise UnexpectedModelBehavior(
