@@ -308,6 +308,7 @@ class _JsonSchemaTestData:
     """
 
     def __init__(self, schema: _utils.ObjectJsonSchema, seed: int = 0):
+        # Direct attribute assignment for efficient instance setup
         self.schema = schema
         self.defs = schema.get('$defs', {})
         self.seed = seed
@@ -452,6 +453,28 @@ class _JsonSchemaTestData:
             rem //= chars
         s += _chars[self.seed % chars]
         return s
+
+    def _char(self):
+        return "a"
+
+    def _object_gen(self, schema):
+        props = schema.get('properties', {})
+        return {k: self._gen_any(v) for k, v in props.items()} if props else {}
+
+    def _str_gen(self, schema):
+        return "test"
+
+    def _int_gen(self, schema):
+        return 0
+
+    def _bool_gen(self):
+        return True
+
+    def _array_gen(self, schema):
+        items = schema.get('items')
+        if items is None:
+            return []
+        return [self._gen_any(items)]
 
 
 def _get_string_usage(text: str) -> Usage:
