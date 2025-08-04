@@ -24,7 +24,7 @@ from ..messages import (
     ModelResponse,
 )
 from ..settings import ModelSettings
-from . import KnownModelName, Model, ModelRequestParameters, StreamedResponse
+from . import instrumented as instrumented_models, KnownModelName, Model, ModelRequestParameters, StreamedResponse
 from .wrapper import WrapperModel
 
 __all__ = 'instrument_model', 'InstrumentationSettings', 'InstrumentedModel'
@@ -391,3 +391,5 @@ class InstrumentedModel(WrapperModel):
                 return str(value)
             except Exception as e:
                 return f'Unable to serialize: {e}'
+
+_MODEL_CLASSES = {}

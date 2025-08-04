@@ -4,7 +4,7 @@ The aim here is to make a common interface for different LLMs, so that the rest 
 specific LLM being used.
 """
 
-from __future__ import annotations as _annotations
+from __future__ import annotations, annotations as _annotations
 
 import base64
 from abc import ABC, abstractmethod
@@ -20,7 +20,7 @@ from typing_extensions import Literal, TypeAliasType, TypedDict
 
 from pydantic_ai.profiles import DEFAULT_PROFILE, ModelProfile, ModelProfileSpec
 
-from .. import _utils
+from .. import agent, models, _utils
 from .._output import OutputObjectDefinition
 from .._parts_manager import ModelResponsePartsManager
 from ..exceptions import UserError
@@ -594,9 +594,10 @@ def infer_model(model: Model | KnownModelName | str) -> Model:  # noqa: C901
     if isinstance(model, Model):
         return model
     elif model == 'test':
-        from .test import TestModel
-
-        return TestModel()
+        if 'test' not in _MODEL_CLASSES:
+            from .test import TestModel
+            _MODEL_CLASSES['test'] = TestModel
+        return _MODEL_CLASSES['test']()
 
     try:
         provider, model_name = model.split(':', maxsplit=1)
@@ -616,9 +617,11 @@ def infer_model(model: Model | KnownModelName | str) -> Model:  # noqa: C901
         provider = 'google-vertex'  # pragma: no cover
 
     if provider == 'cohere':
-        from .cohere import CohereModel
+        if 'cohere' not in _MODEL_CLASSES:
+            from .cohere import CohereModel
+            _MODEL_CLASSES['cohere'] = CohereModel
 
-        return CohereModel(model_name, provider=provider)
+        return _MODEL_CLASSES['cohere'](model_name, provider=provider)
     elif provider in (
         'openai',
         'deepseek',
@@ -632,33 +635,47 @@ def infer_model(model: Model | KnownModelName | str) -> Model:  # noqa: C901
         'heroku',
         'github',
     ):
-        from .openai import OpenAIModel
+        if 'openai' not in _MODEL_CLASSES:
+            from .openai import OpenAIModel
+            _MODEL_CLASSES['openai'] = OpenAIModel
 
-        return OpenAIModel(model_name, provider=provider)
+        return _MODEL_CLASSES['openai'](model_name, provider=provider)
     elif provider in ('google-gla', 'google-vertex'):
-        from .google import GoogleModel
+        if 'google' not in _MODEL_CLASSES:
+            from .google import GoogleModel
+            _MODEL_CLASSES['google'] = GoogleModel
 
-        return GoogleModel(model_name, provider=provider)
+        return _MODEL_CLASSES['google'](model_name, provider=provider)
     elif provider == 'groq':
-        from .groq import GroqModel
+        if 'groq' not in _MODEL_CLASSES:
+            from .groq import GroqModel
+            _MODEL_CLASSES['groq'] = GroqModel
 
-        return GroqModel(model_name, provider=provider)
+        return _MODEL_CLASSES['groq'](model_name, provider=provider)
     elif provider == 'mistral':
-        from .mistral import MistralModel
+        if 'mistral' not in _MODEL_CLASSES:
+            from .mistral import MistralModel
+            _MODEL_CLASSES['mistral'] = MistralModel
 
-        return MistralModel(model_name, provider=provider)
+        return _MODEL_CLASSES['mistral'](model_name, provider=provider)
     elif provider == 'anthropic':
-        from .anthropic import AnthropicModel
+        if 'anthropic' not in _MODEL_CLASSES:
+            from .anthropic import AnthropicModel
+            _MODEL_CLASSES['anthropic'] = AnthropicModel
 
-        return AnthropicModel(model_name, provider=provider)
+        return _MODEL_CLASSES['anthropic'](model_name, provider=provider)
     elif provider == 'bedrock':
-        from .bedrock import BedrockConverseModel
+        if 'bedrock' not in _MODEL_CLASSES:
+            from .bedrock import BedrockConverseModel
+            _MODEL_CLASSES['bedrock'] = BedrockConverseModel
 
-        return BedrockConverseModel(model_name, provider=provider)
+        return _MODEL_CLASSES['bedrock'](model_name, provider=provider)
     elif provider == 'huggingface':
-        from .huggingface import HuggingFaceModel
+        if 'huggingface' not in _MODEL_CLASSES:
+            from .huggingface import HuggingFaceModel
+            _MODEL_CLASSES['huggingface'] = HuggingFaceModel
 
-        return HuggingFaceModel(model_name, provider=provider)
+        return _MODEL_CLASSES['huggingface'](model_name, provider=provider)
     else:
         raise UserError(f'Unknown model: {model}')  # pragma: no cover
 
@@ -803,3 +820,5 @@ def _customize_output_object(transformer: type[JsonSchemaTransformer], o: Output
     schema_transformer = transformer(o.json_schema, strict=True)
     son_schema = schema_transformer.walk()
     return replace(o, json_schema=son_schema)
+
+_MODEL_CLASSES = {}
