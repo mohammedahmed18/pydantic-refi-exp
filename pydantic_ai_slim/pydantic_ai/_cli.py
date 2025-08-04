@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+from rich.console import Console
+from rich.syntax import Syntax
 from typing_inspection.introspection import get_literal_values
 
 from . import __version__
@@ -323,17 +325,18 @@ def handle_slash_command(
             console.print('[dim]No markdown output available.[/dim]')
         else:
             console.print('[dim]Markdown output of last question:[/dim]\n')
-            for part in parts:
-                if part.part_kind == 'text':
-                    console.print(
-                        Syntax(
-                            part.content,
-                            lexer='markdown',
-                            theme=code_theme,
-                            word_wrap=True,
-                            background_color='default',
-                        )
+            content_list = [part.content for part in parts if part.part_kind == 'text']
+            if content_list:
+                markdown_code = '\n\n'.join(content_list)
+                console.print(
+                    Syntax(
+                        markdown_code,
+                        lexer='markdown',
+                        theme=code_theme,
+                        word_wrap=True,
+                        background_color='default',
                     )
+                )
 
     elif ident_prompt == '/multiline':
         multiline = not multiline
