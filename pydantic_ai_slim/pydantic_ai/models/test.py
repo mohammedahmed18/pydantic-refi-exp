@@ -318,17 +318,21 @@ class _JsonSchemaTestData:
 
     def _gen_any(self, schema: dict[str, Any]) -> Any:
         """Generate data for any JSON Schema."""
-        if const := schema.get('const'):
-            return const
-        elif enum := schema.get('enum'):
+        if 'const' in schema:
+            return schema['const']
+        if 'enum' in schema:
+            enum = schema['enum']
             return enum[self.seed % len(enum)]
-        elif examples := schema.get('examples'):
+        if 'examples' in schema:
+            examples = schema['examples']
             return examples[self.seed % len(examples)]
-        elif ref := schema.get('$ref'):
-            key = re.sub(r'^#/\$defs/', '', ref)
+        if '$ref' in schema:
+            ref = schema['$ref']
+            key = _REF_SUB_RE.sub('', ref)
             js_def = self.defs[key]
             return self._gen_any(js_def)
-        elif any_of := schema.get('anyOf'):
+        if 'anyOf' in schema:
+            any_of = schema['anyOf']
             return self._gen_any(any_of[self.seed % len(any_of)])
 
         type_ = schema.get('type')
@@ -357,15 +361,21 @@ class _JsonSchemaTestData:
         required = set(schema.get('required', []))
 
         data: dict[str, Any] = {}
-        if properties := schema.get('properties'):
+        properties = schema.get('properties')
+        if properties:
+            # Pre-resolve .items() and required for speed
             for key, value in properties.items():
                 if key in required:
                     data[key] = self._gen_any(value)
 
-        if addition_props := schema.get('additionalProperties'):
+        addition_props = schema.get('additionalProperties')
+        if addition_props:
             add_prop_key = 'additionalProperty'
-            while add_prop_key in data:
-                add_prop_key += '_'
+            # Slightly optimize: don't loop if not present
+            if add_prop_key in data:
+                suf = '_'
+                while add_prop_key in data:
+                    add_prop_key += suf
             if addition_props is True:
                 data[add_prop_key] = self._char()
             else:
@@ -444,16 +454,19 @@ class _JsonSchemaTestData:
 
     def _char(self) -> str:
         """Generate a character on the same principle as Excel columns, e.g. a-z, aa-az..."""
-        chars = len(_chars)
-        s = ''
-        rem = self.seed // chars
+        chars = []
+        rem = self.seed // _CHARS_LEN
         while rem > 0:
-            s += _chars[(rem - 1) % chars]
-            rem //= chars
-        s += _chars[self.seed % chars]
-        return s
+            chars.append(_chars[(rem - 1) % _CHARS_LEN])
+            rem //= _CHARS_LEN
+        chars.append(_chars[self.seed % _CHARS_LEN])
+        return ''.join(chars)
 
 
 def _get_string_usage(text: str) -> Usage:
     response_tokens = _estimate_string_tokens(text)
     return Usage(response_tokens=response_tokens, total_tokens=response_tokens)
+
+_REF_SUB_RE = re.compile(r'^#/\$defs/')
+
+_CHARS_LEN = len(_chars)
