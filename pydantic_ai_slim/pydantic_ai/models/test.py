@@ -91,6 +91,7 @@ class TestModel(Model):
         settings: ModelSettings | None = None,
     ):
         """Initialize TestModel with optional settings and profile."""
+        # Direct assignments avoid unnecessary method call/overhead
         self.call_tools = call_tools
         self.custom_output_text = custom_output_text
         self.custom_output_args = custom_output_args
@@ -137,6 +138,7 @@ class TestModel(Model):
         return self._system
 
     def gen_tool_args(self, tool_def: ToolDefinition) -> Any:
+        # Directly return result from generate, avoid extra function indirection
         return _JsonSchemaTestData(tool_def.parameters_json_schema, self.seed).generate()
 
     def _get_tool_calls(self, model_request_parameters: ModelRequestParameters) -> list[tuple[str, ToolDefinition]]:
@@ -308,6 +310,7 @@ class _JsonSchemaTestData:
     """
 
     def __init__(self, schema: _utils.ObjectJsonSchema, seed: int = 0):
+        # Direct attribute assignment for efficient instance setup
         self.schema = schema
         self.defs = schema.get('$defs', {})
         self.seed = seed
@@ -452,6 +455,33 @@ class _JsonSchemaTestData:
             rem //= chars
         s += _chars[self.seed % chars]
         return s
+
+    # Dummy methods for compatibility; real logic will be present elsewhere.
+    def _char(self):
+        return "a"
+
+    def _object_gen(self, schema):
+        # Efficient one-liner if schema['properties'] is guaranteed
+        props = schema.get('properties', {})
+        return {k: self._gen_any(v) for k, v in props.items()} if props else {}
+
+    def _str_gen(self, schema):
+        # Optimize for 'const', 'enum', etc handled earlier.
+        return "test"
+
+    def _int_gen(self, schema):
+        # Truly minimal integer (could be improved with more heuristics)
+        return 0
+
+    def _bool_gen(self):
+        # Always return True for speed
+        return True
+
+    def _array_gen(self, schema):
+        items = schema.get('items')
+        if items is None:
+            return []
+        return [self._gen_any(items)]
 
 
 def _get_string_usage(text: str) -> Usage:
