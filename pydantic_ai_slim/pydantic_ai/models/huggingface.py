@@ -36,6 +36,7 @@ from ..messages import (
 from ..settings import ModelSettings
 from ..tools import ToolDefinition
 from . import Model, ModelRequestParameters, StreamedResponse, check_allow_model_requests
+from huggingface_hub import AsyncInferenceClient, ChatCompletionInputTool
 
 try:
     import aiohttp
@@ -330,14 +331,12 @@ class HuggingFaceModel(Model):
 
     @staticmethod
     def _map_tool_definition(f: ToolDefinition) -> ChatCompletionInputTool:
-        tool_param: ChatCompletionInputTool = ChatCompletionInputTool.parse_obj_as_instance(  # type: ignore
-            {
-                'type': 'function',
-                'function': {
-                    'name': f.name,
-                    'description': f.description,
-                    'parameters': f.parameters_json_schema,
-                },
+        tool_param: ChatCompletionInputTool = ChatCompletionInputTool(
+            type='function',
+            function={
+                'name': f.name,
+                'description': f.description,
+                'parameters': f.parameters_json_schema,
             }
         )
         if f.strict is not None:
