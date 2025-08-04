@@ -76,7 +76,7 @@ class JsonSchemaTransformer(ABC):
         nested_refs = 0
         if self.prefer_inlined_defs:
             while ref := schema.get('$ref'):
-                key = re.sub(r'^#/\$defs/', '', ref)
+                key = ref[8:] if ref.startswith('#/$defs/') else ref
                 if key in self.refs_stack:
                     self.recursive_refs.add(key)
                     break  # recursive ref can't be unpacked
@@ -102,7 +102,7 @@ class JsonSchemaTransformer(ABC):
         schema = self.transform(schema)
 
         if nested_refs > 0:
-            self.refs_stack = self.refs_stack[:-nested_refs]
+            del self.refs_stack[-nested_refs:]  # OPTIMIZED: faster and more idiomatic
 
         return schema
 
