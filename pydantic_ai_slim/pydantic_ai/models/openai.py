@@ -48,6 +48,8 @@ from . import (
     download_item,
     get_user_agent,
 )
+from openai.types import chat, responses
+from openai.types.chat import ChatCompletionChunk
 
 try:
     from openai import NOT_GIVEN, APIStatusError, AsyncOpenAI, AsyncStream, NotGiven
@@ -1177,10 +1179,8 @@ def _map_usage(response: chat.ChatCompletion | ChatCompletionChunk | responses.R
     elif isinstance(response_usage, responses.ResponseUsage):
         details: dict[str, int] = {
             key: value
-            for key, value in response_usage.model_dump(
-                exclude={'input_tokens', 'output_tokens', 'total_tokens'}
-            ).items()
-            if isinstance(value, int)
+            for key, value in response_usage.__dict__.items()
+            if key not in {'input_tokens', 'output_tokens', 'total_tokens'} and isinstance(value, int)
         }
         details['reasoning_tokens'] = response_usage.output_tokens_details.reasoning_tokens
         details['cached_tokens'] = response_usage.input_tokens_details.cached_tokens
@@ -1191,17 +1191,17 @@ def _map_usage(response: chat.ChatCompletion | ChatCompletionChunk | responses.R
             details=details,
         )
     else:
-        details = {
-            key: value
-            for key, value in response_usage.model_dump(
-                exclude={'prompt_tokens', 'completion_tokens', 'total_tokens'}
-            ).items()
-            if isinstance(value, int)
-        }
-        if response_usage.completion_tokens_details is not None:
-            details.update(response_usage.completion_tokens_details.model_dump(exclude_none=True))
-        if response_usage.prompt_tokens_details is not None:
-            details.update(response_usage.prompt_tokens_details.model_dump(exclude_none=True))
+        # 'prompt_tokens', 'completion_tokens', 'total_tokens' are excluded
+        model_dict = response_usage.__dict__
+        details = {k: v for k, v in model_dict.items() if k not in {'prompt_tokens', 'completion_tokens', 'total_tokens'} and isinstance(v, int)}
+        # These details may be present (not None)
+        ctd = response_usage.completion_tokens_details
+        if ctd is not None:
+            # Use __dict__ directly, avoiding model_dump overhead
+            details.update({k: v for k, v in ctd.__dict__.items() if v is not None})
+        ptd = response_usage.prompt_tokens_details
+        if ptd is not None:
+            details.update({k: v for k, v in ptd.__dict__.items() if v is not None})
         return usage.Usage(
             requests=1,
             request_tokens=response_usage.prompt_tokens,
