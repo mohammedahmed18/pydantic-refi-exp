@@ -53,10 +53,9 @@ class AgentRunError(RuntimeError):
 
     message: str
     """The error message."""
-
     def __init__(self, message: str):
-        self.message = message
         super().__init__(message)
+        self.message = message  # Only if .message is required elsewhere
 
     def __str__(self) -> str:
         return self.message
