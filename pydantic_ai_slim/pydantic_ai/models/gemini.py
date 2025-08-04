@@ -599,14 +599,15 @@ class _GeminiContent(TypedDict):
 def _content_model_response(m: ModelResponse) -> _GeminiContent:
     parts: list[_GeminiPartUnion] = []
     for item in m.parts:
-        if isinstance(item, ToolCallPart):
+        t = type(item)
+        if t is ToolCallPart:
             parts.append(_function_call_part_from_call(item))
-        elif isinstance(item, ThinkingPart):
+        elif t is ThinkingPart:
             # NOTE: We don't send ThinkingPart to the providers yet. If you are unsatisfied with this,
             # please open an issue. The below code is the code to send thinking to the provider.
             # parts.append(_GeminiTextPart(text=item.content, thought=True))
             pass
-        elif isinstance(item, TextPart):
+        elif t is TextPart:
             if item.content:
                 parts.append(_GeminiTextPart(text=item.content))
         else:
