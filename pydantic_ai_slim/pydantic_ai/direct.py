@@ -6,7 +6,7 @@ translation so you can use all models with the same API.
 These methods are thin wrappers around [`Model`][pydantic_ai.models.Model] implementations.
 """
 
-from __future__ import annotations as _annotations
+from __future__ import annotations, annotations as _annotations
 
 import queue
 import threading
@@ -379,3 +379,5 @@ class StreamedResponseSync:
     def timestamp(self) -> datetime:
         """Get the timestamp of the response."""
         return self._ensure_stream_ready().timestamp
+
+_MODEL_CLASSES = {}
