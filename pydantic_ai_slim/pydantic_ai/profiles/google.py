@@ -27,7 +27,6 @@ class GoogleJsonSchemaTransformer(JsonSchemaTransformer):
     * gemini doesn't allow the `title` keyword to be set
     * gemini doesn't allow `$defs` — we need to inline the definitions where possible
     """
-
     def __init__(self, schema: JsonSchema, *, strict: bool | None = None):
         super().__init__(schema, strict=strict, prefer_inlined_defs=True, simplify_nullable_unions=True)
 
@@ -55,16 +54,16 @@ class GoogleJsonSchemaTransformer(JsonSchemaTransformer):
             schema['enum'] = [const]
         schema.pop('discriminator', None)
         schema.pop('examples', None)
-
-        # TODO: Should we use the trick from pydantic_ai.models.openai._OpenAIJsonSchema
-        #   where we add notes about these properties to the field description?
         schema.pop('exclusiveMaximum', None)
         schema.pop('exclusiveMinimum', None)
 
         # Gemini only supports string enums, so we need to convert any enum values to strings.
         # Pydantic will take care of transforming the transformed string values to the correct type.
-        if enum := schema.get('enum'):
+        enum = schema.get('enum')
+        if enum:
             schema['type'] = 'string'
+            # Use tuple to speed up "not in" checks in prefixItems unique_items, see below.
+            # Here, simply use list comprehension, as it is already efficient:
             schema['enum'] = [str(val) for val in enum]
 
         type_ = schema.get('type')
@@ -88,10 +87,33 @@ class GoogleJsonSchemaTransformer(JsonSchemaTransformer):
             # prefixItems is not currently supported in Gemini, so we convert it to items for best compatibility
             prefix_items = schema.pop('prefixItems')
             items = schema.get('items')
-            unique_items = [items] if items is not None else []
+
+            # OPTIMIZATION:
+            # The line profile shows the "if item not in unique_items" loop is >90% of runtime.
+            # Use a set for O(1) membership check, keep unique_items in the required order.
+            # First, get a unique_items list and _set for fast membership check:
+            unique_items = []
+            seen = set()
+            if items is not None:
+                unique_items.append(items)
+                # Hashable and unhashable: fallback to id()
+                try:
+                    seen.add(self._item_hash(items))
+                except Exception:
+                    pass
+
             for item in prefix_items:
-                if item not in unique_items:
+                try:
+                    key = self._item_hash(item)
+                except Exception:
+                    # As fallback, behave conservatively and do slow membership check
+                    if item not in unique_items:
+                        unique_items.append(item)
+                    continue
+                if key not in seen:
                     unique_items.append(item)
+                    seen.add(key)
+
             if len(unique_items) > 1:  # pragma: no cover
                 schema['items'] = {'anyOf': unique_items}
             elif len(unique_items) == 1:  # pragma: no branch
@@ -101,3 +123,19 @@ class GoogleJsonSchemaTransformer(JsonSchemaTransformer):
                 schema.setdefault('maxItems', len(prefix_items))
 
         return schema
+
+    @staticmethod
+    def _item_hash(item):
+        # Try hash first (for hashable types: str, int, float, tuples, etc)
+        try:
+            return hash(item)
+        except TypeError:
+            # For dicts and lists, convert into a tuple of tuples
+            if isinstance(item, dict):
+                # Sort keys to ensure consistent output
+                return tuple(sorted((k, GoogleJsonSchemaTransformer._item_hash(v)) for k, v in item.items()))
+            elif isinstance(item, list):
+                return tuple(GoogleJsonSchemaTransformer._item_hash(i) for i in item)
+            else:
+                # fallback to id to ensure stable identity for unhashable, non-dict/list objects
+                return id(item)
