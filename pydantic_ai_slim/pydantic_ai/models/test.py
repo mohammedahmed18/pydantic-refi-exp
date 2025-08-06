@@ -318,17 +318,28 @@ class _JsonSchemaTestData:
 
     def _gen_any(self, schema: dict[str, Any]) -> Any:
         """Generate data for any JSON Schema."""
-        if const := schema.get('const'):
+        # The order of lookups matters exactly, and remains preserved.
+        const = schema.get('const')
+        if const is not None:
             return const
-        elif enum := schema.get('enum'):
+
+        enum = schema.get('enum')
+        if enum is not None:
             return enum[self.seed % len(enum)]
-        elif examples := schema.get('examples'):
+
+        examples = schema.get('examples')
+        if examples is not None:
             return examples[self.seed % len(examples)]
-        elif ref := schema.get('$ref'):
-            key = re.sub(r'^#/\$defs/', '', ref)
+
+        ref = schema.get('$ref')
+        if ref is not None:
+            # Avoid compiling regex in tight loop; use precompiled pattern
+            key = _REF_PREFIX_PATTERN.sub('', ref)
             js_def = self.defs[key]
             return self._gen_any(js_def)
-        elif any_of := schema.get('anyOf'):
+
+        any_of = schema.get('anyOf')
+        if any_of is not None:
             return self._gen_any(any_of[self.seed % len(any_of)])
 
         type_ = schema.get('type')
@@ -354,16 +365,25 @@ class _JsonSchemaTestData:
 
     def _object_gen(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Generate data for a JSON Schema object."""
-        required = set(schema.get('required', []))
+        required = schema.get('required')
+        if required is not None:
+            required = set(required)
+        else:
+            required = set()
 
         data: dict[str, Any] = {}
-        if properties := schema.get('properties'):
-            for key, value in properties.items():
-                if key in required:
+        properties = schema.get('properties')
+        if properties:
+            for key in required:
+                value = properties.get(key)
+                if value is not None:
+                    # required keys are guaranteed unique, avoids extra loop over all properties
                     data[key] = self._gen_any(value)
 
-        if addition_props := schema.get('additionalProperties'):
+        addition_props = schema.get('additionalProperties')
+        if addition_props:
             add_prop_key = 'additionalProperty'
+            # Maintain existing logic: avoid overwriting keys
             while add_prop_key in data:
                 add_prop_key += '_'
             if addition_props is True:
@@ -445,15 +465,19 @@ class _JsonSchemaTestData:
     def _char(self) -> str:
         """Generate a character on the same principle as Excel columns, e.g. a-z, aa-az..."""
         chars = len(_chars)
-        s = ''
-        rem = self.seed // chars
+        seed = self.seed
+        rem = seed // chars
+        # This is a rare and seldom-hit "Excel" encoding, but optimize by building list and join instead of string cat
+        buf = []
         while rem > 0:
-            s += _chars[(rem - 1) % chars]
+            buf.append(_chars[(rem - 1) % chars])
             rem //= chars
-        s += _chars[self.seed % chars]
-        return s
+        buf.append(_chars[seed % chars])
+        return ''.join(buf)
 
 
 def _get_string_usage(text: str) -> Usage:
     response_tokens = _estimate_string_tokens(text)
     return Usage(response_tokens=response_tokens, total_tokens=response_tokens)
+
+_REF_PREFIX_PATTERN = re.compile(r'^#/\$defs/')
