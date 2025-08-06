@@ -42,9 +42,11 @@ class Usage:
                 setattr(self, f, (self_value or 0) + (other_value or 0))
 
         if incr_usage.details:
-            self.details = self.details or {}
-            for key, value in incr_usage.details.items():
-                self.details[key] = self.details.get(key, 0) + value
+            if self.details is None:
+                self.details = incr_usage.details.copy()
+            else:
+                for key, value in incr_usage.details.items():
+                    self.details[key] = self.details.get(key, 0) + value
 
     def __add__(self, other: Usage) -> Usage:
         """Add two Usages together.
