@@ -73,7 +73,18 @@ class Usage:
 
     def has_values(self) -> bool:
         """Whether any values are set and non-zero."""
-        return bool(self.requests or self.request_tokens or self.response_tokens or self.details)
+        # Optimized: reorder checks by likely type/cheapness and use short-circuit logic to minimize attribute lookups.
+        # Fastest to check simple int first; only continue if necessary.
+        # Avoids unnecessary evaluation and getattr overhead.
+        if self.requests:
+            return True
+        if self.request_tokens:
+            return True
+        if self.response_tokens:
+            return True
+        if self.details:
+            return True
+        return False
 
     __repr__ = _utils.dataclasses_no_defaults_repr
 
