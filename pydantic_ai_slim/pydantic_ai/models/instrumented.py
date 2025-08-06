@@ -374,13 +374,22 @@ class InstrumentedModel(WrapperModel):
 
     @staticmethod
     def event_to_dict(event: Event) -> dict[str, Any]:
-        if not event.body:
+        event_body = event.body
+        event_attributes = event.attributes
+        
+        if not event_body:
             body = {}  # pragma: no cover
-        elif isinstance(event.body, Mapping):
-            body = event.body  # type: ignore
+        elif isinstance(event_body, Mapping):
+            body = event_body  # type: ignore
         else:
-            body = {'body': event.body}
-        return {**body, **(event.attributes or {})}
+            body = {'body': event_body}
+        
+        if not event_attributes:
+            return body
+        
+        result = dict(body)
+        result.update(event_attributes)
+        return result
 
     @staticmethod
     def serialize_any(value: Any) -> str:
