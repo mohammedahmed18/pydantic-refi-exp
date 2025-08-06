@@ -647,7 +647,7 @@ class ModelRequest:
     @classmethod
     def user_text_prompt(cls, user_prompt: str, *, instructions: str | None = None) -> ModelRequest:
         """Create a `ModelRequest` with a single user prompt as text."""
-        return cls(parts=[UserPromptPart(user_prompt)], instructions=instructions)
+        return cls([UserPromptPart(user_prompt)], instructions)
 
     __repr__ = _utils.dataclasses_no_defaults_repr
 
