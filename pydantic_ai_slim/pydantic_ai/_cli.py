@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+from rich.console import Console
+from rich.syntax import Syntax
 from typing_inspection.introspection import get_literal_values
 
 from . import __version__
@@ -322,10 +324,12 @@ def handle_slash_command(
         except IndexError:
             console.print('[dim]No markdown output available.[/dim]')
         else:
-            console.print('[dim]Markdown output of last question:[/dim]\n')
+            # Pre-construct Syntax objects to amortize the cost outside of console.print
+            to_print = []
             for part in parts:
                 if part.part_kind == 'text':
-                    console.print(
+                    # Only create the Syntax object for needed parts, and avoid printing the line for each separately
+                    to_print.append(
                         Syntax(
                             part.content,
                             lexer='markdown',
@@ -334,7 +338,10 @@ def handle_slash_command(
                             background_color='default',
                         )
                     )
-
+            if to_print:
+                # Only print the "Markdown output" label if there is any markdown to show
+                # Compose the output in one call to reduce print overhead
+                console.print('[dim]Markdown output of last question:[/dim]\n', *to_print)
     elif ident_prompt == '/multiline':
         multiline = not multiline
         if multiline:
