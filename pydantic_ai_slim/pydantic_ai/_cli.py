@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+from rich.console import Console
+from rich.syntax import Syntax
 from typing_inspection.introspection import get_literal_values
 
 from . import __version__
@@ -323,17 +325,7 @@ def handle_slash_command(
             console.print('[dim]No markdown output available.[/dim]')
         else:
             console.print('[dim]Markdown output of last question:[/dim]\n')
-            for part in parts:
-                if part.part_kind == 'text':
-                    console.print(
-                        Syntax(
-                            part.content,
-                            lexer='markdown',
-                            theme=code_theme,
-                            word_wrap=True,
-                            background_color='default',
-                        )
-                    )
+            _print_markdown(console, parts, code_theme)
 
     elif ident_prompt == '/multiline':
         multiline = not multiline
@@ -350,3 +342,28 @@ def handle_slash_command(
     else:
         console.print(f'[red]Unknown command[/red] [magenta]`{ident_prompt}`[/magenta]')
     return None, multiline
+
+
+def _print_markdown(console: Console, parts, code_theme: str):
+    # This helper avoids repeated attribute lookups and Syntax instantiations in the main function loop
+    theme = code_theme
+    syntax_kwargs = {
+        'lexer': 'markdown',
+        'theme': theme,
+        'word_wrap': True,
+        'background_color': 'default',
+    }
+    print_method = console.print
+    SyntaxType = Syntax
+    append = []
+    for part in parts:
+        if part.part_kind == 'text':
+            append.append(
+                SyntaxType(
+                    part.content,
+                    **syntax_kwargs
+                )
+            )
+    if append:
+        # Printing all Syntax objects in one call is much faster than inside the loop
+        print_method(*append)
