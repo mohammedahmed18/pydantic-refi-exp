@@ -36,6 +36,7 @@ from ..messages import (
 from ..settings import ModelSettings
 from ..tools import ToolDefinition
 from . import Model, ModelRequestParameters, StreamedResponse, check_allow_model_requests
+from huggingface_hub import ChatCompletionOutput, ChatCompletionStreamOutput
 
 try:
     import aiohttp
@@ -459,9 +460,13 @@ def _map_usage(response: ChatCompletionOutput | ChatCompletionStreamOutput) -> u
     if response_usage is None:
         return usage.Usage()
 
+    prompt_tokens = response_usage.prompt_tokens
+    completion_tokens = response_usage.completion_tokens
+    total_tokens = response_usage.total_tokens
+    
     return usage.Usage(
-        request_tokens=response_usage.prompt_tokens,
-        response_tokens=response_usage.completion_tokens,
-        total_tokens=response_usage.total_tokens,
+        request_tokens=prompt_tokens,
+        response_tokens=completion_tokens,
+        total_tokens=total_tokens,
         details=None,
     )
