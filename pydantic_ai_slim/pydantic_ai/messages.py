@@ -225,19 +225,23 @@ class AudioUrl(FileUrl):
         References:
         - Gemini: https://ai.google.dev/gemini-api/docs/audio#supported-formats
         """
-        if self.url.endswith('.mp3'):
-            return 'audio/mpeg'
-        if self.url.endswith('.wav'):
-            return 'audio/wav'
-        if self.url.endswith('.flac'):
-            return 'audio/flac'
-        if self.url.endswith('.oga'):
-            return 'audio/ogg'
-        if self.url.endswith('.aiff'):
-            return 'audio/aiff'
-        if self.url.endswith('.aac'):
-            return 'audio/aac'
-
+        # Use a static tuple and mapping for fastest extension lookup
+        url = self.url
+        if url.endswith(('.mp3', '.wav', '.flac', '.oga', '.aiff', '.aac')):
+            ext = url.rsplit('.', 1)[-1].lower()
+            # Avoid dict creation per call by inlining logic
+            if ext == 'mp3':
+                return 'audio/mpeg'
+            if ext == 'wav':
+                return 'audio/wav'
+            if ext == 'flac':
+                return 'audio/flac'
+            if ext == 'oga':
+                return 'audio/ogg'
+            if ext == 'aiff':
+                return 'audio/aiff'
+            if ext == 'aac':
+                return 'audio/aac'
         raise ValueError(f'Unknown audio file extension: {self.url}')
 
     @property
