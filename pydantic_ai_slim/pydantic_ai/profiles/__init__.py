@@ -46,7 +46,7 @@ class ModelProfile:
         """Update this ModelProfile (subclass) instance with the non-default values from another ModelProfile instance."""
         if not profile:
             return self
-        field_names = set(f.name for f in fields(self))
+        field_names = {f.name for f in fields(self)}
         non_default_attrs = {
             f.name: getattr(profile, f.name)
             for f in fields(profile)
