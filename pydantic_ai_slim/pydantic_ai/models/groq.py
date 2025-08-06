@@ -41,6 +41,7 @@ from . import (
     check_allow_model_requests,
     get_user_agent,
 )
+from groq.types import chat
 
 try:
     from groq import NOT_GIVEN, APIStatusError, AsyncGroq, AsyncStream
@@ -444,17 +445,25 @@ class GroqStreamedResponse(StreamedResponse):
 
 
 def _map_usage(completion: chat.ChatCompletionChunk | chat.ChatCompletion) -> usage.Usage:
-    response_usage = None
+    # Micro-optimization: cache attributes into locals only as needed to reduce repeated attribute lookups
+    # Fast path: ChatCompletion (vast majority will be this if using OpenAI/groq API conventions)
     if isinstance(completion, chat.ChatCompletion):
         response_usage = completion.usage
-    elif completion.x_groq is not None:
-        response_usage = completion.x_groq.usage
+    else:
+        # Only lookup x_groq once for efficiency
+        x_groq = completion.x_groq
+        response_usage = x_groq.usage if x_groq is not None else None
 
     if response_usage is None:
         return usage.Usage()
 
+    # Cache response_usage attrs in locals to avoid multiple lookups in Usage()
+    prompt_tokens = response_usage.prompt_tokens
+    completion_tokens = response_usage.completion_tokens
+    total_tokens = response_usage.total_tokens
+
     return usage.Usage(
-        request_tokens=response_usage.prompt_tokens,
-        response_tokens=response_usage.completion_tokens,
-        total_tokens=response_usage.total_tokens,
+        request_tokens=prompt_tokens,
+        response_tokens=completion_tokens,
+        total_tokens=total_tokens,
     )
