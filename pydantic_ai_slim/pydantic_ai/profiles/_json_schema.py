@@ -45,7 +45,7 @@ class JsonSchemaTransformer(ABC):
         return schema
 
     def walk(self) -> JsonSchema:
-        schema = deepcopy(self.schema)
+        schema = dict(self.schema)  # Use shallow copy instead of deepcopy
 
         # First, handle everything but $defs:
         schema.pop('$defs', None)
@@ -76,7 +76,11 @@ class JsonSchemaTransformer(ABC):
         nested_refs = 0
         if self.prefer_inlined_defs:
             while ref := schema.get('$ref'):
-                key = re.sub(r'^#/\$defs/', '', ref)
+                # Fast path for common case
+                if ref.startswith('#/$defs/'):
+                    key = ref[8:]  # len('#/$defs/') = 8
+                else:
+                    key = re.sub(r'^#/\$defs/', '', ref)
                 if key in self.refs_stack:
                     self.recursive_refs.add(key)
                     break  # recursive ref can't be unpacked
