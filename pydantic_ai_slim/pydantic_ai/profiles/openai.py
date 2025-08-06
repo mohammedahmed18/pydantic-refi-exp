@@ -124,9 +124,8 @@ class OpenAIJsonSchemaTransformer(JsonSchemaTransformer):
         # Track strict-incompatible keys
         incompatible_values: dict[str, Any] = {}
         for key in _STRICT_INCOMPATIBLE_KEYS:
-            value = schema.get(key, _sentinel)
-            if value is not _sentinel:
-                incompatible_values[key] = value
+            if key in schema:
+                incompatible_values[key] = schema[key]
         description = schema.get('description')
         if incompatible_values:
             if self.strict is True:
@@ -154,7 +153,7 @@ class OpenAIJsonSchemaTransformer(JsonSchemaTransformer):
 
                 # all properties are required
                 if 'properties' not in schema:
-                    schema['properties'] = dict[str, Any]()
+                    schema['properties'] = {}
                 schema['required'] = list(schema['properties'].keys())
 
             elif self.strict is None:
