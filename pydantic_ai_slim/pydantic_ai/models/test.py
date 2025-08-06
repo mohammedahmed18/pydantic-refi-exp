@@ -457,3 +457,21 @@ class _JsonSchemaTestData:
 def _get_string_usage(text: str) -> Usage:
     response_tokens = _estimate_string_tokens(text)
     return Usage(response_tokens=response_tokens, total_tokens=response_tokens)
+
+def _fast_token_count(content: str) -> int:
+    """Fast token counting without regex splitting."""
+    stripped = content.strip()
+    if not stripped:
+        return 0
+    
+    count = 0
+    in_token = False
+    for c in stripped:
+        # Match the original regex pattern [\s",.:]+
+        if c in ' \t\n\r",.':
+            in_token = False
+        else:
+            if not in_token:
+                count += 1
+                in_token = True
+    return count
