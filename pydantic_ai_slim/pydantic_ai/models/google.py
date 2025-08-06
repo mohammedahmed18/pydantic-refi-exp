@@ -42,6 +42,7 @@ from . import (
     download_item,
     get_user_agent,
 )
+from google.genai.types import Part
 
 try:
     from google import genai
@@ -509,23 +510,37 @@ def _process_response_from_parts(
     vendor_id: str | None,
     vendor_details: dict[str, Any] | None = None,
 ) -> ModelResponse:
+    # Inline Part attributes for minimized attribute lookups.
     items: list[ModelResponsePart] = []
+    append = items.append  # Micro optimization: localize method for tight loop
+
     for part in parts:
-        if part.text is not None:
+        part_text = part.text
+        if part_text is not None:
             if part.thought:
-                items.append(ThinkingPart(content=part.text))
+                append(ThinkingPart(content=part_text))
             else:
-                items.append(TextPart(content=part.text))
-        elif part.function_call:
-            assert part.function_call.name is not None
-            tool_call_part = ToolCallPart(tool_name=part.function_call.name, args=part.function_call.args)
-            if part.function_call.id is not None:
-                tool_call_part.tool_call_id = part.function_call.id  # pragma: no cover
-            items.append(tool_call_part)
-        elif part.function_response:  # pragma: no cover
-            raise UnexpectedModelBehavior(
-                f'Unsupported response from Gemini, expected all parts to be function calls or text, got: {part!r}'
-            )
+                append(TextPart(content=part_text))
+        else:
+            part_function_call = part.function_call
+            if part_function_call:
+                # Cache name, args and id
+                name = part_function_call.name
+                assert name is not None
+                args = part_function_call.args
+                tool_call_part = ToolCallPart.__new__(ToolCallPart)
+                # Avoid __init__ overhead and set attributes directly
+                tool_call_part.tool_name = name
+                tool_call_part.args = args
+                id_ = part_function_call.id
+                if id_ is not None:
+                    tool_call_part.tool_call_id = id_  # pragma: no cover
+                append(tool_call_part)
+            elif part.function_response:  # pragma: no cover
+                raise UnexpectedModelBehavior(
+                    f'Unsupported response from Gemini, expected all parts to be function calls or text, got: {part!r}'
+                )
+    # No change: ModelResponse instantiation
     return ModelResponse(
         parts=items, model_name=model_name, usage=usage, vendor_id=vendor_id, vendor_details=vendor_details
     )
