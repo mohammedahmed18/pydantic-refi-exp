@@ -16,21 +16,24 @@ def split_content_into_text_and_thinking(content: str) -> list[ThinkingPart | Te
     something else, we just match the tag to make it easier for other models that don't support the `ThinkingPart`.
     """
     parts: list[ThinkingPart | TextPart] = []
+    start_len = len(START_THINK_TAG)
+    end_len = len(END_THINK_TAG)
 
-    start_index = content.find(START_THINK_TAG)
-    while start_index >= 0:
-        before_think, content = content[:start_index], content[start_index + len(START_THINK_TAG) :]
-        if before_think:
-            parts.append(TextPart(content=before_think))
-        end_index = content.find(END_THINK_TAG)
-        if end_index >= 0:
-            think_content, content = content[:end_index], content[end_index + len(END_THINK_TAG) :]
-            parts.append(ThinkingPart(content=think_content))
+    pos = 0
+    while True:
+        start_index = content.find(START_THINK_TAG, pos)
+        if start_index == -1:
+            break
+        if start_index > pos:
+            parts.append(TextPart(content=content[pos:start_index]))
+        think_start = start_index + start_len
+        end_index = content.find(END_THINK_TAG, think_start)
+        if end_index != -1:
+            parts.append(ThinkingPart(content=content[think_start:end_index]))
+            pos = end_index + end_len
         else:
-            # We lose the `<think>` tag, but it shouldn't matter.
-            parts.append(TextPart(content=content))
-            content = ''
-        start_index = content.find(START_THINK_TAG)
-    if content:
-        parts.append(TextPart(content=content))
+            parts.append(TextPart(content=content[think_start:]))
+            return parts
+    if pos < len(content):
+        parts.append(TextPart(content=content[pos:]))
     return parts
