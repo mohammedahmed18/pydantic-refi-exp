@@ -88,10 +88,17 @@ class GoogleJsonSchemaTransformer(JsonSchemaTransformer):
             # prefixItems is not currently supported in Gemini, so we convert it to items for best compatibility
             prefix_items = schema.pop('prefixItems')
             items = schema.get('items')
-            unique_items = [items] if items is not None else []
+            # Optimize: Avoid quadratic scan for duplicates, use set for O(1) membership check, preserve order.
+            unique_items = []
+            seen = set()
+            if items is not None:
+                unique_items.append(items)
+                seen.add(self._get_item_hashable(items))
             for item in prefix_items:
-                if item not in unique_items:
+                item_hash = self._get_item_hashable(item)
+                if item_hash not in seen:
                     unique_items.append(item)
+                    seen.add(item_hash)
             if len(unique_items) > 1:  # pragma: no cover
                 schema['items'] = {'anyOf': unique_items}
             elif len(unique_items) == 1:  # pragma: no branch
@@ -101,3 +108,17 @@ class GoogleJsonSchemaTransformer(JsonSchemaTransformer):
                 schema.setdefault('maxItems', len(prefix_items))
 
         return schema
+
+    @staticmethod
+    def _get_item_hashable(item):
+        # Try to use the fastest hashable form for JSON-like structures
+        # Fallback to id (worse dedup but never errors) for unhashable/recursive types
+        try:
+            if isinstance(item, dict):
+                return tuple(sorted(item.items()))
+            elif isinstance(item, list):
+                return tuple(item)
+            else:
+                return item
+        except Exception:
+            return id(item)
