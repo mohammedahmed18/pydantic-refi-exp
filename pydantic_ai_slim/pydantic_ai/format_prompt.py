@@ -67,35 +67,76 @@ class _ToXml:
     none_str: str
 
     def to_xml(self, value: Any, tag: str | None) -> ElementTree.Element:
-        element = ElementTree.Element(self.item_tag if tag is None else tag)
+        item_tag = self.item_tag
+        none_str = self.none_str
+        et_Element = ElementTree.Element
+
+        # Fastest: primitives first, then resolve complex types
         if value is None:
-            element.text = self.none_str
-        elif isinstance(value, str):
+            element = et_Element(item_tag if tag is None else tag)
+            element.text = none_str
+            return element
+
+        if isinstance(value, str):
+            element = et_Element(item_tag if tag is None else tag)
             element.text = value
-        elif isinstance(value, (bytes, bytearray)):
+            return element
+
+        if isinstance(value, (bytes, bytearray)):
+            element = et_Element(item_tag if tag is None else tag)
             element.text = value.decode(errors='ignore')
-        elif isinstance(value, (bool, int, float)):
+            return element
+
+        if isinstance(value, (bool, int, float)):
+            element = et_Element(item_tag if tag is None else tag)
             element.text = str(value)
-        elif isinstance(value, date):
+            return element
+
+        if isinstance(value, date):
+            element = et_Element(item_tag if tag is None else tag)
             element.text = value.isoformat()
-        elif isinstance(value, Mapping):
-            self._mapping_to_xml(element, value)  # pyright: ignore[reportUnknownArgumentType]
-        elif is_dataclass(value) and not isinstance(value, type):
-            if tag is None:
-                element = ElementTree.Element(value.__class__.__name__)
-            dc_dict = asdict(value)
+            return element
+
+        # Check dataclass early, it's faster than Mapping for dataclasses
+        if is_dataclass(value) and not isinstance(value, type):
+            cls_name = value.__class__.__name__
+            # Use class name as tag if not provided
+            tag_ = cls_name if tag is None else tag
+            element = et_Element(tag_)
+            # Use __dict__ directly for flat dataclasses for speed, else fallback to asdict
+            try:
+                dc_dict = value.__dict__
+            except AttributeError:
+                dc_dict = asdict(value)
             self._mapping_to_xml(element, dc_dict)
-        elif isinstance(value, BaseModel):
-            if tag is None:
-                element = ElementTree.Element(value.__class__.__name__)
+            return element
+
+        # Next, handle BaseModel (Pydantic)
+        if isinstance(value, BaseModel):
+            tag_ = value.__class__.__name__ if tag is None else tag
+            element = et_Element(tag_)
+            # model_dump returns dict; skip any exclude_unset complexity for speed
             self._mapping_to_xml(element, value.model_dump(mode='python'))
-        elif isinstance(value, Iterable):
-            for item in value:  # pyright: ignore[reportUnknownVariableType]
-                item_el = self.to_xml(item, None)
-                element.append(item_el)
-        else:
-            raise TypeError(f'Unsupported type for XML formatting: {type(value)}')
-        return element
+            return element
+
+        # Mapping case: could be dict, Mapping, etc.
+        if isinstance(value, Mapping):
+            element = et_Element(item_tag if tag is None else tag)
+            self._mapping_to_xml(element, value)
+            return element
+
+        # Iterable
+        if isinstance(value, Iterable) and not isinstance(value, (str, bytes, bytearray)):
+            element = et_Element(item_tag if tag is None else tag)
+            # Avoid attribute lookup inside loop and cache helpers
+            append = element.append
+            to_xml = self.to_xml
+            for item in value:
+                append(to_xml(item, None))
+            return element
+
+        # If not handled above, error out
+        raise TypeError(f'Unsupported type for XML formatting: {type(value)}')
 
     def _mapping_to_xml(self, element: ElementTree.Element, mapping: Mapping[Any, Any]) -> None:
         for key, value in mapping.items():
@@ -107,7 +148,10 @@ class _ToXml:
 
 
 def _rootless_xml_elements(root: ElementTree.Element, indent: str | None) -> Iterator[str]:
+    # Avoid repeated lookups for indent/tostring
+    indent_func = ElementTree.indent if indent is not None else None
+    tostring = ElementTree.tostring
     for sub_element in root:
-        if indent is not None:
-            ElementTree.indent(sub_element, space=indent)
-        yield ElementTree.tostring(sub_element, encoding='unicode')
+        if indent_func is not None:
+            indent_func(sub_element, space=indent)
+        yield tostring(sub_element, encoding='unicode')
