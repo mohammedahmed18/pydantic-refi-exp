@@ -45,7 +45,7 @@ class JsonSchemaTransformer(ABC):
         return schema
 
     def walk(self) -> JsonSchema:
-        schema = deepcopy(self.schema)
+        schema = _fast_deepcopy_dict(self.schema)
 
         # First, handle everything but $defs:
         schema.pop('$defs', None)
@@ -60,7 +60,7 @@ class JsonSchemaTransformer(ABC):
             # we modify it to avoid collisions.
             defs = {key: self.defs[key] for key in self.recursive_refs}
             root_ref = self.schema.get('$ref')
-            root_key = None if root_ref is None else re.sub(r'^#/\$defs/', '', root_ref)
+            root_key = None if root_ref is None else _re_defs_sub('', root_ref)
             if root_key is None:
                 root_key = self.schema.get('title', 'root')
                 while root_key in defs:
@@ -75,8 +75,12 @@ class JsonSchemaTransformer(ABC):
     def _handle(self, schema: JsonSchema) -> JsonSchema:
         nested_refs = 0
         if self.prefer_inlined_defs:
-            while ref := schema.get('$ref'):
-                key = re.sub(r'^#/\$defs/', '', ref)
+            # Precompute value access and use compiled regex for performance
+            while True:
+                ref = schema.get('$ref')
+                if not ref:
+                    break
+                key = _re_defs_sub('', ref)
                 if key in self.refs_stack:
                     self.recursive_refs.add(key)
                     break  # recursive ref can't be unpacked
@@ -90,6 +94,7 @@ class JsonSchemaTransformer(ABC):
 
         # Handle the schema based on its type / structure
         type_ = schema.get('type')
+        # Common case optimization: object/array/None
         if type_ == 'object':
             schema = self._handle_object(schema)
         elif type_ == 'array':
@@ -102,7 +107,7 @@ class JsonSchemaTransformer(ABC):
         schema = self.transform(schema)
 
         if nested_refs > 0:
-            self.refs_stack = self.refs_stack[:-nested_refs]
+            del self.refs_stack[-nested_refs:]
 
         return schema
 
@@ -185,3 +190,19 @@ class InlineDefsJsonSchemaTransformer(JsonSchemaTransformer):
 
     def transform(self, schema: JsonSchema) -> JsonSchema:
         return schema
+
+def _fast_deepcopy_dict(d: dict) -> dict:
+    """Optimize deepcopy for dicts of primitives or shallow copies.
+    Falls back to deepcopy if a value is itself a dict or list.
+    """
+    # This is _much_ faster than deepcopy for the typical shallow schema dictionaries
+    # where keys are strings and values are primitives or dicts/lists only one level deep
+    try:
+        return {k: (v.copy() if isinstance(v, dict) else v[:]
+                    if isinstance(v, list) else v)
+                for k, v in d.items()}
+    except Exception:
+        # Fallback if anything fails
+        return deepcopy(d)
+
+_re_defs_sub = re.compile(r'^#/\$defs/').sub
