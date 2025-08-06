@@ -376,12 +376,15 @@ def _update_mapped_json_schema_refs(s: dict[str, Any], name_mapping: dict[str, s
         for item in prefix_items:
             _update_mapped_json_schema_refs(item, name_mapping)
 
-    # Handle unions
-    for union_type in ['anyOf', 'oneOf']:
-        if union_type in s:
-            union_items: list[dict[str, Any]] = s[union_type]
-            for item in union_items:
-                _update_mapped_json_schema_refs(item, name_mapping)
+    # Handle unions - optimized to avoid list creation
+    if 'anyOf' in s:
+        union_items: list[dict[str, Any]] = s['anyOf']
+        for item in union_items:
+            _update_mapped_json_schema_refs(item, name_mapping)
+    if 'oneOf' in s:
+        union_items: list[dict[str, Any]] = s['oneOf']
+        for item in union_items:
+            _update_mapped_json_schema_refs(item, name_mapping)
 
 
 def merge_json_schema_defs(schemas: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
