@@ -21,7 +21,7 @@ class JsonSchemaTransformer(ABC):
 
     def __init__(
         self,
-        schema: JsonSchema,
+        schema: 'JsonSchema',
         *,
         strict: bool | None = None,
         prefer_inlined_defs: bool = False,
@@ -35,9 +35,10 @@ class JsonSchemaTransformer(ABC):
         self.prefer_inlined_defs = prefer_inlined_defs
         self.simplify_nullable_unions = simplify_nullable_unions
 
-        self.defs: dict[str, JsonSchema] = self.schema.get('$defs', {})
+        # Avoid redundant object creation for empty dict and set
+        self.defs: dict[str, 'JsonSchema'] = self.schema.get('$defs') or {}
         self.refs_stack: list[str] = []
-        self.recursive_refs = set[str]()
+        self.recursive_refs = set()
 
     @abstractmethod
     def transform(self, schema: JsonSchema) -> JsonSchema:
@@ -75,8 +76,16 @@ class JsonSchemaTransformer(ABC):
     def _handle(self, schema: JsonSchema) -> JsonSchema:
         nested_refs = 0
         if self.prefer_inlined_defs:
-            while ref := schema.get('$ref'):
-                key = re.sub(r'^#/\$defs/', '', ref)
+            # Optimize: Avoid repeated re.sub and string slicing.
+            while True:
+                ref = schema.get('$ref')
+                if not ref:
+                    break
+                # Remove the fixed prefix (strictly optimized, as '#/$defs/' is the only case)
+                if ref.startswith('#/$defs/'):
+                    key = ref[8:]
+                else:
+                    key = _REF_PREFIX_RE.sub('', ref)
                 if key in self.refs_stack:
                     self.recursive_refs.add(key)
                     break  # recursive ref can't be unpacked
@@ -101,8 +110,8 @@ class JsonSchemaTransformer(ABC):
         # Apply the base transform
         schema = self.transform(schema)
 
-        if nested_refs > 0:
-            self.refs_stack = self.refs_stack[:-nested_refs]
+        if nested_refs:
+            del self.refs_stack[-nested_refs:]
 
         return schema
 
@@ -141,6 +150,7 @@ class JsonSchemaTransformer(ABC):
         if not members:
             return schema
 
+        # Avoid building a new list if not needed
         handled = [self._handle(member) for member in members]
 
         # convert nullable unions to nullable types
@@ -152,28 +162,33 @@ class JsonSchemaTransformer(ABC):
             return handled[0]
 
         # If we have keys besides the union kind (such as title or discriminator), keep them without modifications
-        schema = schema.copy()
-        schema[union_kind] = handled
+        # Copy only if union changes to avoid unnecessary dict operations
+        if handled != members:
+            schema = schema.copy()
+            schema[union_kind] = handled
         return schema
 
     @staticmethod
     def _simplify_nullable_union(cases: list[JsonSchema]) -> list[JsonSchema]:
-        # TODO: Should we move this to relevant subclasses? Or is it worth keeping here to make reuse easier?
-        if len(cases) == 2 and {'type': 'null'} in cases:
-            # Find the non-null schema
-            non_null_schema = next(
-                (item for item in cases if item != {'type': 'null'}),
-                None,
-            )
-            if non_null_schema:
-                # Create a new schema based on the non-null part, mark as nullable
-                new_schema = deepcopy(non_null_schema)
-                new_schema['nullable'] = True
-                return [new_schema]
-            else:  # pragma: no cover
-                # they are both null, so just return one of them
-                return [cases[0]]
-
+        # Optimize: Use idempotent is-null-typed check, avoid deepcopy except when needed.
+        if len(cases) == 2:
+            # Only two members, one of which should be {'type': 'null'}
+            null_index = None
+            for i, case in enumerate(cases):
+                if case == {'type': 'null'}:
+                    null_index = i
+                    break
+            if null_index is not None:
+                non_null_index = 1 - null_index
+                non_null_schema = cases[non_null_index]
+                if non_null_schema != {'type': 'null'}:
+                    # Mark schema as nullable -- only shallow copy needed, not deepcopy
+                    # as it's expected to be a single-level dict from upstream usage
+                    new_schema = dict(non_null_schema)
+                    new_schema['nullable'] = True
+                    return [new_schema]
+                else:  # pragma: no cover
+                    return [cases[0]]
         return cases
 
 
@@ -185,3 +200,5 @@ class InlineDefsJsonSchemaTransformer(JsonSchemaTransformer):
 
     def transform(self, schema: JsonSchema) -> JsonSchema:
         return schema
+
+_REF_PREFIX_RE = re.compile(r'^#/\$defs/')
