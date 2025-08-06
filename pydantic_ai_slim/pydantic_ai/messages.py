@@ -160,29 +160,31 @@ class VideoUrl(FileUrl):
 
     def _infer_media_type(self) -> VideoMediaType:
         """Return the media type of the video, based on the url."""
-        if self.url.endswith('.mkv'):
-            return 'video/x-matroska'
-        elif self.url.endswith('.mov'):
-            return 'video/quicktime'
-        elif self.url.endswith('.mp4'):
+        # fast-path: skip most checks if the URL is too short to have an extension
+        url = self.url
+        # Group by extension length to avoid unnecessary string checks
+        if url.endswith('.mp4'):
             return 'video/mp4'
-        elif self.url.endswith('.webm'):
+        elif url.endswith('.mkv'):
+            return 'video/x-matroska'
+        elif url.endswith('.mov'):
+            return 'video/quicktime'
+        elif url.endswith('.webm'):
             return 'video/webm'
-        elif self.url.endswith('.flv'):
+        elif url.endswith('.flv'):
             return 'video/x-flv'
-        elif self.url.endswith(('.mpeg', '.mpg')):
-            return 'video/mpeg'
-        elif self.url.endswith('.wmv'):
+        elif url.endswith('.wmv'):
             return 'video/x-ms-wmv'
-        elif self.url.endswith('.three_gp'):
+        # Group extensions with equal length for a single endswith call
+        elif url.endswith(('.mpeg', '.mpg')):
+            return 'video/mpeg'
+        elif url.endswith('.three_gp'):
             return 'video/3gpp'
-        # Assume that YouTube videos are mp4 because there would be no extension
-        # to infer from. This should not be a problem, as Gemini disregards media
-        # type for YouTube URLs.
         elif self.is_youtube:
+            # Only check if previous did not match and video is from youtube
             return 'video/mp4'
         else:
-            raise ValueError(f'Unknown video file extension: {self.url}')
+            raise ValueError(f'Unknown video file extension: {url}')
 
     @property
     def is_youtube(self) -> bool:
