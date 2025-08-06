@@ -347,12 +347,14 @@ def _estimate_string_tokens(content: str | Sequence[UserContent]) -> int:
         return 0
 
     if isinstance(content, str):
-        return len(_TOKEN_SPLIT_RE.split(content.strip()))
+        stripped = content.strip()
+        return len(_TOKEN_SPLIT_RE.findall(stripped)) if stripped else 0
 
     tokens = 0
     for part in content:
         if isinstance(part, str):
-            tokens += len(_TOKEN_SPLIT_RE.split(part.strip()))
+            stripped = part.strip()
+            tokens += len(_TOKEN_SPLIT_RE.findall(stripped)) if stripped else 0
         elif isinstance(part, BinaryContent):
             tokens += len(part.data)
         # TODO(Marcelo): We need to study how we can estimate the tokens for AudioUrl or ImageUrl.
