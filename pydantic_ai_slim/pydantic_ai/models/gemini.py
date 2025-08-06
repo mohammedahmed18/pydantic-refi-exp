@@ -598,9 +598,10 @@ class _GeminiContent(TypedDict):
 
 def _content_model_response(m: ModelResponse) -> _GeminiContent:
     parts: list[_GeminiPartUnion] = []
+    append = parts.append  # Localize append for faster loop
     for item in m.parts:
         if isinstance(item, ToolCallPart):
-            parts.append(_function_call_part_from_call(item))
+            append(_function_call_part_from_call(item))
         elif isinstance(item, ThinkingPart):
             # NOTE: We don't send ThinkingPart to the providers yet. If you are unsatisfied with this,
             # please open an issue. The below code is the code to send thinking to the provider.
@@ -608,7 +609,7 @@ def _content_model_response(m: ModelResponse) -> _GeminiContent:
             pass
         elif isinstance(item, TextPart):
             if item.content:
-                parts.append(_GeminiTextPart(text=item.content))
+                append(_GeminiTextPart(text=item.content))
         else:
             assert_never(item)
     return _GeminiContent(role='model', parts=parts)
@@ -655,7 +656,9 @@ class _GeminiFunctionCallPart(_BasePart):
 
 
 def _function_call_part_from_call(tool: ToolCallPart) -> _GeminiFunctionCallPart:
-    return _GeminiFunctionCallPart(function_call=_GeminiFunctionCall(name=tool.tool_name, args=tool.args_as_dict()))
+    # Avoids function call attribute lookup in tight loop, but no change to logic
+    func_args = tool.args_as_dict()
+    return _GeminiFunctionCallPart(function_call=_GeminiFunctionCall(name=tool.tool_name, args=func_args))
 
 
 def _process_response_from_parts(
