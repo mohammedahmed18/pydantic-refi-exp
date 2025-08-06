@@ -13,7 +13,11 @@ The module includes:
 
 from __future__ import annotations
 
-from httpx import AsyncBaseTransport, AsyncHTTPTransport, BaseTransport, HTTPTransport, Request, Response
+from httpx import HTTPStatusError, AsyncBaseTransport, AsyncHTTPTransport, BaseTransport, HTTPTransport, Request, Response
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from tenacity import RetryCallState, wait_exponential
+from typing import Callable, cast
 
 try:
     from tenacity import AsyncRetrying, Retrying
@@ -218,7 +222,7 @@ def wait_retry_after(
         ```
     """
     if fallback_strategy is None:
-        fallback_strategy = wait_exponential(multiplier=1, max=60)
+        fallback_strategy = _DEFAULT_WAIT_EXPONENTIAL
 
     def wait_func(state: RetryCallState) -> float:
         exc = state.outcome.exception() if state.outcome else None
@@ -247,3 +251,5 @@ def wait_retry_after(
         return fallback_strategy(state)
 
     return wait_func
+
+_DEFAULT_WAIT_EXPONENTIAL = wait_exponential(multiplier=1, max=60)
