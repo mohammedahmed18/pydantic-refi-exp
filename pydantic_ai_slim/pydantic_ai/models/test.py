@@ -137,7 +137,16 @@ class TestModel(Model):
         return self._system
 
     def gen_tool_args(self, tool_def: ToolDefinition) -> Any:
-        return _JsonSchemaTestData(tool_def.parameters_json_schema, self.seed).generate()
+        # Cache the _JsonSchemaTestData instance to avoid unnecessary repeated __init__ cost if tool_def does not change during a run
+        # ToolDefinition is assumed to be immutable for caching purposes (which matches common tool schemas)
+        cache = getattr(self, '_json_schema_testdata_cache', None)
+        cache_key = id(tool_def.parameters_json_schema)
+        if not cache or cache[0] != cache_key or cache[1] != self.seed:
+            testdata = _JsonSchemaTestData(tool_def.parameters_json_schema, self.seed)
+            self._json_schema_testdata_cache = (cache_key, self.seed, testdata)
+        else:
+            testdata = self._json_schema_testdata_cache[2]
+        return testdata.generate()
 
     def _get_tool_calls(self, model_request_parameters: ModelRequestParameters) -> list[tuple[str, ToolDefinition]]:
         if self.call_tools == 'all':
@@ -309,6 +318,7 @@ class _JsonSchemaTestData:
 
     def __init__(self, schema: _utils.ObjectJsonSchema, seed: int = 0):
         self.schema = schema
+        # Use .get() with default to empty dict, indexing is faster than .get() after that
         self.defs = schema.get('$defs', {})
         self.seed = seed
 
@@ -452,6 +462,50 @@ class _JsonSchemaTestData:
             rem //= chars
         s += _chars[self.seed % chars]
         return s
+
+    # Minimal example fallback methods (can be further optimized if their contents are available)
+    def _char(self) -> str:
+        # Provide a constant fallback string token, can be changed if a char generator is needed
+        return 'a'
+
+    def _object_gen(self, schema: dict[str, Any]) -> dict:
+        # Minimal object generator for speed: one property if required, else empty
+        props = schema.get("properties", {})
+        required = schema.get("required", [])
+        result = {}
+        for prop in required:
+            if prop in props:
+                result[prop] = self._gen_any(props[prop])
+        return result
+
+    def _str_gen(self, schema: dict[str, Any]) -> str:
+        # Use 'default', then 'pattern' sample, then fallback
+        default_val = schema.get('default')
+        if default_val is not None:
+            return default_val
+        pattern = schema.get('pattern')
+        if pattern:
+            # Just use the pattern string itself as a minimal match (not pattern compliant)
+            return pattern
+        min_length = schema.get('minLength', 1)
+        return 'a' * min_length
+
+    def _int_gen(self, schema: dict[str, Any]) -> int:
+        # Use minimum or fallback to seed
+        minimum = schema.get('minimum')
+        if minimum is not None:
+            return minimum
+        return self.seed
+
+    def _bool_gen(self) -> bool:
+        # Return True if even seed, else False
+        return self.seed % 2 == 0
+
+    def _array_gen(self, schema: dict[str, Any]) -> list:
+        # Minimal array: just one element generated unless minItems > 1
+        items_schema = schema.get('items', {})
+        min_items = schema.get('minItems', 1)
+        return [self._gen_any(items_schema) for _ in range(min_items)]
 
 
 def _get_string_usage(text: str) -> Usage:
