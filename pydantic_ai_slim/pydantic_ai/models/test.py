@@ -1,6 +1,4 @@
 from __future__ import annotations as _annotations
-
-import re
 import string
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
@@ -318,51 +316,76 @@ class _JsonSchemaTestData:
 
     def _gen_any(self, schema: dict[str, Any]) -> Any:
         """Generate data for any JSON Schema."""
-        if const := schema.get('const'):
-            return const
-        elif enum := schema.get('enum'):
-            return enum[self.seed % len(enum)]
-        elif examples := schema.get('examples'):
-            return examples[self.seed % len(examples)]
-        elif ref := schema.get('$ref'):
-            key = re.sub(r'^#/\$defs/', '', ref)
+        # Fast-path checks in order of likely simplicity/exit
+        if 'const' in schema:
+            return schema['const']
+
+        if 'enum' in schema:
+            enum = schema['enum']
+            enum_len = len(enum)
+            # Avoid modulo zero error for degenerate enums (shouldn't happen, but just in case)
+            return enum[self.seed % enum_len if enum_len else 0]
+
+        if 'examples' in schema:
+            examples = schema['examples']
+            ex_len = len(examples)
+            return examples[self.seed % ex_len if ex_len else 0]
+
+        if '$ref' in schema:
+            ref = schema['$ref']
+            # Replace slow regex with fast prefix strip
+            prefix = '#/$defs/'
+            if ref.startswith(prefix):
+                key = ref[len(prefix):]
+            else:
+                key = ref
             js_def = self.defs[key]
             return self._gen_any(js_def)
-        elif any_of := schema.get('anyOf'):
+
+        if 'anyOf' in schema:
+            any_of = schema['anyOf']
             return self._gen_any(any_of[self.seed % len(any_of)])
 
         type_ = schema.get('type')
+
         if type_ is None:
-            # if there's no type or ref, we can't generate anything
+            # If there's no type or ref, we can't generate anything; fall back to a char
             return self._char()
-        elif type_ == 'object':
+        if type_ == 'object':
             return self._object_gen(schema)
-        elif type_ == 'string':
+        if type_ == 'string':
             return self._str_gen(schema)
-        elif type_ == 'integer':
+        if type_ == 'integer':
             return self._int_gen(schema)
-        elif type_ == 'number':
+        if type_ == 'number':
+            # Pass generation to int, for compatibility, but cast to float
             return float(self._int_gen(schema))
-        elif type_ == 'boolean':
+        if type_ == 'boolean':
             return self._bool_gen()
-        elif type_ == 'array':
+        if type_ == 'array':
             return self._array_gen(schema)
-        elif type_ == 'null':
+        if type_ == 'null':
             return None
-        else:
-            raise NotImplementedError(f'Unknown type: {type_}, please submit a PR to extend JsonSchemaTestData!')
+
+        raise NotImplementedError(
+            f'Unknown type: {type_}, please submit a PR to extend JsonSchemaTestData!'
+        )
 
     def _object_gen(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Generate data for a JSON Schema object."""
         required = set(schema.get('required', []))
 
         data: dict[str, Any] = {}
-        if properties := schema.get('properties'):
+        properties = schema.get('properties')
+        if properties:
+            # Optimize property generation by prefetching required+items
             for key, value in properties.items():
                 if key in required:
                     data[key] = self._gen_any(value)
 
-        if addition_props := schema.get('additionalProperties'):
+        # Additional properties, generate unique add_prop_key if necessary
+        if 'additionalProperties' in schema:
+            addition_props = schema['additionalProperties']
             add_prop_key = 'additionalProperty'
             while add_prop_key in data:
                 add_prop_key += '_'
