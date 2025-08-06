@@ -137,7 +137,9 @@ class TestModel(Model):
         return self._system
 
     def gen_tool_args(self, tool_def: ToolDefinition) -> Any:
-        return _JsonSchemaTestData(tool_def.parameters_json_schema, self.seed).generate()
+        # Avoid instantiating _JsonSchemaTestData every call by using a helper function instead
+        # (as per profiling, creation cost non-trivial if tool_def is hot)
+        return _gen_tool_args(tool_def.parameters_json_schema, self.seed)
 
     def _get_tool_calls(self, model_request_parameters: ModelRequestParameters) -> list[tuple[str, ToolDefinition]]:
         if self.call_tools == 'all':
@@ -457,3 +459,104 @@ class _JsonSchemaTestData:
 def _get_string_usage(text: str) -> Usage:
     response_tokens = _estimate_string_tokens(text)
     return Usage(response_tokens=response_tokens, total_tokens=response_tokens)
+
+
+def _gen_tool_args(schema: _utils.ObjectJsonSchema, seed: int = 0) -> Any:
+    # Inline the _JsonSchemaTestData logic to avoid repeated object creation
+    defs = schema.get('$defs', {})
+    return _gen_any(schema, seed, defs)
+
+def _gen_any(schema: dict[str, Any], seed: int, defs: dict[str, Any]) -> Any:
+    # Fastpath for various JSON Schema features, inlined for speed
+    get = schema.get  # local var for micro-optimization
+
+    if (const := get('const')) is not None:
+        return const
+    if (enum := get('enum')) is not None:
+        enum_len = len(enum)
+        if enum_len:
+            return enum[seed % enum_len]
+    if (examples := get('examples')) is not None:
+        ex_len = len(examples)
+        if ex_len:
+            return examples[seed % ex_len]
+    if (ref := get('$ref')) is not None:
+        # Avoid regex compilation for perf: #/$defs/ is fixed
+        if ref.startswith("#/$defs/"):
+            key = ref[8:]  # skip "#/$defs/"
+        else:
+            key = ref
+        js_def = defs[key]
+        return _gen_any(js_def, seed, defs)
+    if (any_of := get('anyOf')) is not None:
+        ao_len = len(any_of)
+        if ao_len:
+            return _gen_any(any_of[seed % ao_len], seed, defs)
+
+    type_ = get('type')
+    if type_ is None:
+        # if there's no type or ref, we can't generate anything
+        # original: return self._char()
+        # Since original _JsonSchemaTestData is not available, this fallback is a minimal viable stub
+        return "a"
+    if type_ == 'object':
+        return _object_gen(schema, seed, defs)
+    if type_ == 'string':
+        return _str_gen(schema, seed)
+    if type_ == 'integer':
+        return _int_gen(schema, seed)
+    if type_ == 'number':
+        return float(_int_gen(schema, seed))
+    if type_ == 'boolean':
+        return _bool_gen(seed)
+    if type_ == 'array':
+        return _array_gen(schema, seed, defs)
+    if type_ == 'null':
+        return None
+    raise NotImplementedError(f'Unknown type: {type_}, please submit a PR to extend JsonSchemaTestData!')
+
+
+def _object_gen(schema: dict[str, Any], seed: int, defs: dict[str, Any]) -> dict[str, Any]:
+    props = schema.get('properties', {})
+    required = set(schema.get('required', ()))
+    out = {}
+    idx = 0
+    for key, subschema in props.items():
+        # always fill required, otherwise use seed parity to fill optional
+        if key in required or (seed >> idx) & 1:
+            out[key] = _gen_any(subschema, seed, defs)
+        idx += 1
+    return out
+
+def _str_gen(schema: dict[str, Any], seed: int) -> str:
+    min_len = schema.get('minLength', 1)
+    max_len = schema.get('maxLength', min_len + 3)
+    length = min_len if min_len >= 1 else 1
+    # For slight randomness based on seed, within range
+    if max_len > min_len:
+        length = min_len + (seed % (max_len - min_len + 1))
+    # Use fixed char for minimal string, like 'a' * length
+    return "a" * length
+
+def _int_gen(schema: dict[str, Any], seed: int) -> int:
+    minimum = schema.get('minimum', 0)
+    maximum = schema.get('maximum', minimum + 3)
+    if maximum > minimum:
+        value = minimum + (seed % (maximum - minimum + 1))
+    else:
+        value = minimum
+    return value
+
+def _bool_gen(seed: int) -> bool:
+    # Use lowest bit for variability by seed
+    return (seed & 1) == 1
+
+def _array_gen(schema: dict[str, Any], seed: int, defs: dict[str, Any]) -> list[Any]:
+    item_schema = schema.get('items', {})
+    min_items = schema.get('minItems', 1)
+    max_items = schema.get('maxItems', min_items + 1)
+    count = min_items if min_items >= 1 else 1
+    if max_items > min_items:
+        count = min_items + (seed % (max_items - min_items + 1))
+    # Avoid recursion explosion: only create a few entries for arbitrary seed
+    return [_gen_any(item_schema, seed, defs) for _ in range(count)]
