@@ -45,6 +45,8 @@ from . import (
     check_allow_model_requests,
     get_user_agent,
 )
+from mistralai import Content as MistralContent, OptionalNullable as MistralOptionalNullable, TextChunk as MistralTextChunk
+from mistralai.types.basemodel import Unset as MistralUnset
 
 try:
     from mistralai import (
@@ -707,15 +709,22 @@ def _map_content(content: MistralOptionalNullable[MistralContent]) -> str | None
     output: str | None = None
 
     if isinstance(content, MistralUnset) or not content:
-        output = None
+        return None
     elif isinstance(content, list):
+        # Efficient concatenation and earlier exit on unsupported types.
+        texts = []
         for chunk in content:
             if isinstance(chunk, MistralTextChunk):
-                output = output or '' + chunk.text
+                texts.append(chunk.text)
             else:
                 assert False, (  # pragma: no cover
                     f'Other data types like (Image, Reference) are not yet supported,  got {type(chunk)}'
                 )
+        # Avoid empty string as output.
+        if texts:
+            output = ''.join(texts)
+        else:
+            output = None
     elif isinstance(content, str):
         output = content
 
